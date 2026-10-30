@@ -1,5 +1,5 @@
 #import "il2cpp_loader.h"
-#import "hooks.h" // Нужен для add_log
+#import "hooks.h"
 #import <dlfcn.h>
 
 Il2CppDomain (*il2cpp_domain_get)(void) = NULL;
@@ -10,9 +10,9 @@ Il2CppMethodInfo* (*il2cpp_class_get_method_from_name)(Il2CppClass*, const char*
 void* (*il2cpp_method_get_pointer)(const Il2CppMethodInfo*) = NULL;
 void* (*il2cpp_thread_attach)(Il2CppDomain) = NULL;
 
+// Убрали RTLD_DEFAULT! Ищем строго в хэндле UnityFramework
 #define RESOLVE(name) do { \
-    *(void **)(&il2cpp_##name) = dlsym(RTLD_DEFAULT, "il2cpp_" #name); \
-    if (!il2cpp_##name && h) *(void **)(&il2cpp_##name) = dlsym(h, "il2cpp_" #name); \
+    *(void **)(&il2cpp_##name) = dlsym(h, "il2cpp_" #name); \
     if (!il2cpp_##name) { \
         add_log(@"ОШИБКА: Нет символа il2cpp_%s", #name); \
         return false; \
@@ -20,9 +20,15 @@ void* (*il2cpp_thread_attach)(Il2CppDomain) = NULL;
 } while (0)
 
 bool il2cpp_loader_init(void) {
+    // Пробуем разные варианты загрузки хэндла
     void *h = dlopen("@executable_path/Frameworks/UnityFramework.framework/UnityFramework", RTLD_LAZY);
+    if (!h) h = dlopen("@executable_path/Frameworks/UnityFramework.framework/UnityFramework", RTLD_LAZY | RTLD_NOLOAD);
+    if (!h) h = dlopen("UnityFramework", RTLD_LAZY);
+    if (!h) h = dlopen("UnityFramework", RTLD_LAZY | RTLD_NOLOAD);
+    
     if (!h) {
-        h = dlopen("UnityFramework", RTLD_LAZY);
+        add_log(@"ОШИБКА: Не удалось получить хэндл UnityFramework");
+        return false;
     }
     
     RESOLVE(domain_get);
