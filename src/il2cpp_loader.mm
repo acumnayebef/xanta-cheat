@@ -1,100 +1,65 @@
-#import "hooks.h"
 #import "il2cpp_loader.h"
-#import "dobby.h"
+#import "hooks.h" // Нужен для add_log
+#import <dlfcn.h>
 
-bool g_BoolInfMoney = false;
-bool g_BoolFreeUpgrades = false;
-bool g_BoolFreeIAP = false;
+Il2CppDomain (*il2cpp_domain_get)(void) = NULL;
+Il2CppAssembly* (*il2cpp_domain_assembly_open)(Il2CppDomain, const char*) = NULL;
+Il2CppImage* (*il2cpp_assembly_get_image)(Il2CppAssembly*) = NULL;
+Il2CppClass* (*il2cpp_class_from_name)(const Il2CppImage*, const char*, const char*) = NULL;
+Il2CppMethodInfo* (*il2cpp_class_get_method_from_name)(Il2CppClass*, const char*, int) = NULL;
+void* (*il2cpp_method_get_pointer)(const Il2CppMethodInfo*) = NULL;
+void* (*il2cpp_thread_attach)(Il2CppDomain) = NULL;
 
-// --- 1. Валюта (Spend и Earn) ---
-static void (*orig_Spend)(void *self, int amount) = NULL;
-static void hook_Spend(void *self, int amount) {
-    if (g_BoolInfMoney) {
-        return; // Деньги не списываются
+#define RESOLVE(name) do { \
+    *(void **)(&il2cpp_##name) = dlsym(RTLD_DEFAULT, "il2cpp_" #name); \
+    if (!il2cpp_##name && h) *(void **)(&il2cpp_##name) = dlsym(h, "il2cpp_" #name); \
+    if (!il2cpp_##name) { \
+        add_log(@"ОШИБКА: Нет символа il2cpp_%s", #name); \
+        return false; \
+    } \
+} while (0)
+
+bool il2cpp_loader_init(void) {
+    void *h = dlopen("@executable_path/Frameworks/UnityFramework.framework/UnityFramework", RTLD_LAZY);
+    if (!h) {
+        h = dlopen("UnityFramework", RTLD_LAZY);
     }
-    if (orig_Spend) orig_Spend(self, amount);
-}
-
-static void (*orig_Earn)(void *self, int amount) = NULL;
-static void hook_Earn(void *self, int amount) {
-    if (g_BoolInfMoney) {
-        amount = 999999; // Начисляем много
-    }
-    if (orig_Earn) orig_Earn(self, amount);
-}
-
-// --- 2. Апгрейды (SetEngine) ---
-static void (*orig_SetEngine)(void *self, int level) = NULL;
-static void hook_SetEngine(void *self, int level) {
-    if (g_BoolFreeUpgrades) {
-        level = 5;
-    }
-    if (orig_SetEngine) orig_SetEngine(self, level);
-}
-
-// --- 3. IAP (Покупки) ---
-// Метод принимает Il2CppString* (productID), возвращает bool
-static bool (*orig_IsProductPurchased)(void *self, void *productID) = NULL;
-static bool hook_IsProductPurchased(void *self, void *productID) {
-    if (g_BoolFreeIAP) {
-        return true; // Всегда "куплено"
-    }
-    if (orig_IsProductPurchased) {
-        return orig_IsProductPurchased(self, productID);
-    }
-    return false;
-}
-
-// --- Установка хуков ---
-void install_hooks(void) {
-    add_log(@"Инициализация il2cpp...");
     
-    if (!il2cpp_loader_init()) {
-        add_log(@"ОШИБКА: il2cpp не инициализирован!");
-        return;
-    }
+    RESOLVE(domain_get);
+    RESOLVE(domain_assembly_open);
+    RESOLVE(assembly_get_image);
+    RESOLVE(class_from_name);
+    RESOLVE(class_get_method_from_name);
+    RESOLVE(method_get_pointer);
+    RESOLVE(thread_attach);
 
-    // 1. Валюта (SilverCurrency)
-    Il2CppClass *silverClass = il2cpp_find_class("TOJGAMES.Economy", "SilverCurrency");
-    if (silverClass) {
-        void *addrSpend = il2cpp_method_addr(silverClass, "Spend", 1);
-        if (addrSpend) {
-            DobbyHook(addrSpend, (void *)hook_Spend, (void **)&orig_Spend);
-            add_log(@"SilverCurrency.Spend: OK");
-        } else add_log(@"SilverCurrency.Spend: НЕ НАЙДЕН");
+    add_log(@"Символы il2cpp успешно найдены");
+    return true;
+}
+
+Il2CppClass* il2cpp_find_class(const char *ns, const char *name) {
+    static Il2CppImage *img = NULL;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Il2CppDomain d = il2cpp_domain_get();
+        if (!d) {
+            add_log(@"ОШИБКА: domain_get вернул NULL");
+            return;
+        }
+        il2cpp_thread_attach(d);
         
-        void *addrEarn = il2cpp_method_addr(silverClass, "Earn", 1);
-        if (addrEarn) {
-            DobbyHook(addrEarn, (void *)hook_Earn, (void **)&orig_Earn);
-            add_log(@"SilverCurrency.Earn: OK");
-        } else add_log(@"SilverCurrency.Earn: НЕ НАЙДЕН");
-    } else {
-        add_log(@"SilverCurrency: КЛАСС НЕ НАЙДЕН");
-    }
+        Il2CppAssembly *a = il2cpp_domain_assembly_open(d, "Assembly-CSharp");
+        if (a) {
+            img = il2cpp_assembly_get_image(a);
+        } else {
+            add_log(@"ОШИБКА: Не удалось открыть Assembly-CSharp");
+        }
+    });
+    return img ? il2cpp_class_from_name(img, ns, name) : NULL;
+}
 
-    // 2. Апгрейды (VehicleUpgraderAndTuner)
-    Il2CppClass *upgraderClass = il2cpp_find_class("", "VehicleUpgraderAndTuner");
-    if (upgraderClass) {
-        void *addr = il2cpp_method_addr(upgraderClass, "SetEngine", 1);
-        if (addr) {
-            DobbyHook(addr, (void *)hook_SetEngine, (void **)&orig_SetEngine);
-            add_log(@"VehicleUpgraderAndTuner.SetEngine: OK");
-        } else add_log(@"SetEngine: НЕ НАЙДЕН");
-    } else {
-        add_log(@"VehicleUpgraderAndTuner: КЛАСС НЕ НАЙДЕН");
-    }
-
-    // 3. IAP (IAPManager)
-    Il2CppClass *iapClass = il2cpp_find_class("TOJGAMES.Monetization", "IAPManager");
-    if (iapClass) {
-        void *addr = il2cpp_method_addr(iapClass, "IsProductPurchased", 1);
-        if (addr) {
-            DobbyHook(addr, (void *)hook_IsProductPurchased, (void **)&orig_IsProductPurchased);
-            add_log(@"IAPManager.IsProductPurchased: OK");
-        } else add_log(@"IsProductPurchased: НЕ НАЙДЕН");
-    } else {
-        add_log(@"IAPManager: КЛАСС НЕ НАЙДЕН");
-    }
-    
-    add_log(@"Установка хуков завершена.");
+void* il2cpp_method_addr(Il2CppClass *klass, const char *name, int argc) {
+    if (!klass) return NULL;
+    Il2CppMethodInfo *m = il2cpp_class_get_method_from_name(klass, name, argc);
+    return m ? il2cpp_method_get_pointer(m) : NULL;
 }

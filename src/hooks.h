@@ -7,15 +7,12 @@ extern "C" {
 #include <stdbool.h>
 #import <Foundation/Foundation.h>
 
-// Глобальные флаги для меню
+// Только объявления (extern), без инициализации!
 extern bool g_BoolInfMoney;
 extern bool g_BoolFreeUpgrades;
 extern bool g_BoolFreeIAP;
 
-// Функция для логирования прямо в меню
 void add_log(NSString *format, ...);
-
-// Установка хуков
 void install_hooks(void);
 
 #ifdef __cplusplus
