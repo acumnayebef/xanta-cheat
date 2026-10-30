@@ -1,0 +1,53 @@
+name: Build libcheat.dylib
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Clone Dobby
+        run: |
+          git clone --depth 1 --recursive https://github.com/jmpews/Dobby.git third_party/dobby
+
+      - name: Build Dobby for iOS arm64
+        run: |
+          cd third_party/dobby
+          mkdir -p build-ios && cd build-ios
+          cmake .. \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DDOBBY_GENERATE_SHARED=OFF
+          cmake --build . -j$(sysctl -n hw.ncpu)
+          echo "=== Built artifacts ==="
+          find . -name "*.a" -exec lipo -info {} \;
+
+      - name: Build libcheat.dylib
+        run: bash scripts/build.sh
+
+      - name: Verify dylib
+        run: |
+          echo "=== file ==="
+          file build/libcheat.dylib
+          echo "=== linked libraries ==="
+          otool -L build/libcheat.dylib
+          echo "=== LC_ID_DYLIB ==="
+          otool -l build/libcheat.dylib | grep -A2 LC_ID_DYLIB
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libcheat-dylib
+          path: build/libcheat.dylib

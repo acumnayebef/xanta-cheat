@@ -1,0 +1,29 @@
+# Сборка
+build/
+*.dylib
+*.o
+*.a
+patched.ipa
+
+# Dobby (клонируется workflow'ом)
+third_party/dobby/
+
+# IPA игры НЕ кладём в репозиторий — она в Release
+*.ipa
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Временные файлы
+*.log
+*.tmp
+workdir/
