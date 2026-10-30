@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import <QuartzCore/QuartzCore.h>
 #import <os/log.h>
+#import "hooks.h"
 
 #pragma mark - Конфиг
 
@@ -207,20 +208,37 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     UIView *v = [[UIView alloc] initWithFrame:_content.bounds];
     v.tag = 100;
     v.hidden = YES;
+    
+    CGFloat w = v.bounds.size.width;
+    __block CGFloat yOffset = 20;
 
-    UILabel *ph = [[UILabel alloc] initWithFrame:CGRectMake(0, 100, v.bounds.size.width, 20)];
-    ph.text = @"Скоро: функции чита";
-    ph.textAlignment = NSTextAlignmentCenter;
-    ph.textColor = C_SUB();
-    ph.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    [v addSubview:ph];
+    // Функция для создания переключателя
+    UISwitch* (^addToggle)(NSString *, BOOL, SEL) = ^UISwitch*(NSString *title, BOOL isOn, SEL action) {
+        UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, yOffset, w, 44)];
+        row.backgroundColor = C_PANEL();
+        row.layer.cornerRadius = 10;
+        
+        UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(14, 0, w - 70, 44)];
+        lbl.text = title;
+        lbl.textColor = C_TEXT();
+        lbl.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        [row addSubview:lbl];
+        
+        UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(w - 60, 6, 51, 31)];
+        sw.onTintColor = C_ACCENT();
+        sw.on = isOn;
+        [sw addTarget:self action:action forControlEvents:UIControlEventValueChanged];
+        [row addSubview:sw];
+        
+        [v addSubview:row];
+        yOffset += 54;
+        return sw;
+    };
 
-    UILabel *ph2 = [[UILabel alloc] initWithFrame:CGRectMake(0, 124, v.bounds.size.width, 20)];
-    ph2.text = @"Здесь появятся переключатели";
-    ph2.textAlignment = NSTextAlignmentCenter;
-    ph2.textColor = [C_SUB() colorWithAlphaComponent:0.6];
-    ph2.font = [UIFont systemFontOfSize:12];
-    [v addSubview:ph2];
+    // Добавляем тумблеры
+    addToggle(@"Бесконечные деньги", g_BoolInfMoney, @selector(toggleInfMoney:));
+    addToggle(@"Бесплатные апгрейды", g_BoolFreeUpgrades, @selector(toggleFreeUpgrades:));
+    addToggle(@"Бесплатные покупки (IAP)", g_BoolFreeIAP, @selector(toggleFreeIAP:));
 
     [_content addSubview:v];
 }
@@ -329,6 +347,10 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     }
 }
 
+- (void)toggleInfMoney:(UISwitch *)sender { g_BoolInfMoney = sender.isOn; }
+- (void)toggleFreeUpgrades:(UISwitch *)sender { g_BoolFreeUpgrades = sender.isOn; }
+- (void)toggleFreeIAP:(UISwitch *)sender { g_BoolFreeIAP = sender.isOn; }
+
 - (void)openChannel {
     [[UIApplication sharedApplication] openURL:[NSURL URLWithString:kTGChannelURL]
                                        options:@{}
@@ -424,10 +446,13 @@ void xantaShowButton(void) {
 
 __attribute__((constructor))
 static void xantaInit(void) {
-    os_log(OS_LOG_DEFAULT, "[xanta] libcheat loaded into process");
+    os_log(OS_LOG_DEFAULT, "[xantapers] libcheat loaded into process");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        os_log(OS_LOG_DEFAULT, "[xanta] showing button");
+        // Инициализируем хуки ДО показа меню
+        install_hooks();
+        
+        os_log(OS_LOG_DEFAULT, "[xantapers] showing button");
         xantaShowButton();
     });
 }
