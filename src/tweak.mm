@@ -5,6 +5,35 @@
 #import <os/log.h>
 #import "hooks.h"
 
+#pragma mark - Глобальные переменные для логов
+
+static NSMutableString *g_LogText = nil;
+static UITextView *g_LogView = nil;
+
+void add_log(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *str = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!g_LogText) g_LogText = [NSMutableString new];
+        [g_LogText appendFormat:@"\n> %@", str];
+        
+        // Ограничиваем размер логов, чтобы не лагало
+        if (g_LogText.length > 5000) {
+            [g_LogText deleteCharactersInRange:NSMakeRange(0, g_LogText.length - 5000)];
+        }
+
+        if (g_LogView) {
+            g_LogView.text = g_LogText;
+            // Скроллим в самый низ
+            NSRange range = NSMakeRange(g_LogView.text.length - 1, 1);
+            [g_LogView scrollRangeToVisible:range];
+        }
+    });
+}
+
 #pragma mark - Конфиг
 
 static NSString *const kMenuTitle    = @"XANTAPERS";
@@ -31,7 +60,6 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
 @implementation XantaWindow
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *v = [super hitTest:point withEvent:event];
-    // Пустое место окна/корневой view не ловим — касание уходит окну ниже (игре)
     if (v == self || v == self.rootViewController.view) return nil;
     return v;
 }
@@ -133,7 +161,7 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     UIButton *_tabCreators;
     UILabel *_tabIndicator;
     BOOL _creatorsTab;
-    BOOL _hooksInstalled; // Флаг, чтобы не ставить хуки дважды
+    BOOL _hooksInstalled;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -145,14 +173,13 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     return self;
 }
 
-// Тап мимо панели проходит в игру, пока меню открыто
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *v = [super hitTest:point withEvent:event];
     return v == self ? nil : v;
 }
 
 - (void)buildUI {
-    _panel = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 440)];
+    _panel = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 480)]; // Чуть увеличили высоту
     _panel.center = self.center;
     _panel.backgroundColor = C_BG();
     _panel.layer.cornerRadius = 22;
@@ -217,7 +244,7 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     [_tabCreators addTarget:self action:@selector(selectCreators) forControlEvents:UIControlEventTouchUpInside];
     [_tabBar addSubview:_tabCreators];
 
-    _content = [[UIView alloc] initWithFrame:CGRectMake(16, 128, 320 - 32, 440 - 128 - 16)];
+    _content = [[UIView alloc] initWithFrame:CGRectMake(16, 128, 320 - 32, 480 - 128 - 16)];
     _content.layer.cornerRadius = 14;
     [_panel addSubview:_content];
 
@@ -234,40 +261,45 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     CGFloat w = v.bounds.size.width;
     __block CGFloat yOffset = 10;
 
-    // 1. Кнопка активации хуков (вместо тумблера)
     GradientButton *initBtn = [[GradientButton alloc] initWithFrame:CGRectMake(0, yOffset, w, 44)];
     [initBtn setTitle:@"АКТИВИРОВАТЬ ХУКИ" forState:UIControlStateNormal];
     [initBtn addTarget:self action:@selector(installHooksTapped:) forControlEvents:UIControlEventTouchUpInside];
     [v addSubview:initBtn];
     yOffset += 54;
 
-    // 2. Функция для создания переключателя
     UISwitch* (^addToggle)(NSString *, BOOL, SEL) = ^UISwitch*(NSString *title, BOOL isOn, SEL action) {
         UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, yOffset, w, 44)];
         row.backgroundColor = C_PANEL();
         row.layer.cornerRadius = 10;
-        
         UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(14, 0, w - 70, 44)];
-        lbl.text = title;
-        lbl.textColor = C_TEXT();
-        lbl.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        lbl.text = title; lbl.textColor = C_TEXT(); lbl.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
         [row addSubview:lbl];
-        
         UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(w - 60, 6, 51, 31)];
-        sw.onTintColor = C_ACCENT();
-        sw.on = isOn;
+        sw.onTintColor = C_ACCENT(); sw.on = isOn;
         [sw addTarget:self action:action forControlEvents:UIControlEventValueChanged];
         [row addSubview:sw];
-        
         [v addSubview:row];
         yOffset += 54;
         return sw;
     };
 
-    // 3. Тумблеры читов
     addToggle(@"Бесконечные деньги", g_BoolInfMoney, @selector(toggleInfMoney:));
     addToggle(@"Бесплатные апгрейды", g_BoolFreeUpgrades, @selector(toggleFreeUpgrades:));
     addToggle(@"Бесплатные покупки (IAP)", g_BoolFreeIAP, @selector(toggleFreeIAP:));
+
+    yOffset += 10;
+    UIView *logContainer = [[UIView alloc] initWithFrame:CGRectMake(0, yOffset, w, v.bounds.size.height - yOffset)];
+    logContainer.backgroundColor = C_PANEL();
+    logContainer.layer.cornerRadius = 10;
+    [v addSubview:logContainer];
+
+    g_LogView = [[UITextView alloc] initWithFrame:CGRectMake(8, 8, w - 16, logContainer.bounds.size.height - 16)];
+    g_LogView.backgroundColor = [UIColor clearColor];
+    g_LogView.textColor = C_TEXT();
+    g_LogView.font = [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
+    g_LogView.editable = NO;
+    g_LogView.text = g_LogText ? g_LogText : @"Ожидание логов...";
+    [logContainer addSubview:g_LogView];
 
     [_content addSubview:v];
 }
@@ -376,34 +408,34 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     }
 }
 
-// Действия тумблеров
 - (void)toggleInfMoney:(UISwitch *)sender { g_BoolInfMoney = sender.isOn; }
 - (void)toggleFreeUpgrades:(UISwitch *)sender { g_BoolFreeUpgrades = sender.isOn; }
 - (void)toggleFreeIAP:(UISwitch *)sender { g_BoolFreeIAP = sender.isOn; }
 
-// Действие кнопки установки хуков
 - (void)installHooksTapped:(GradientButton *)sender {
-    if (_hooksInstalled) return; // Защита от повторного нажатия
+    if (_hooksInstalled) {
+        add_log(@"Хуки уже установлены!");
+        return;
+    }
+    [sender setTitle:@"УСТАНОВКА..." forState:UIControlStateNormal];
     
-    os_log(OS_LOG_DEFAULT, "[xantapers] User manually triggered hooks installation");
-    install_hooks();
-    _hooksInstalled = YES;
-    
-    [sender setTitle:@"ХУКИ АКТИВИРОВАНЫ ✓" forState:UIControlStateNormal];
-    sender.userInteractionEnabled = NO;
-    sender.alpha = 0.6;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        install_hooks();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self->_hooksInstalled = YES;
+            [sender setTitle:@"ХУКИ АКТИВИРОВАНЫ ✓" forState:UIControlStateNormal];
+            sender.userInteractionEnabled = NO;
+            sender.alpha = 0.6;
+        });
+    });
 }
 
 - (void)openChannel {
-    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:kTGChannelURL]
-                                       options:@{}
-                             completionHandler:nil];
+    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:kTGChannelURL] options:@{} completionHandler:nil];
 }
 
 - (void)openHandle {
-    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:kTGHandleURL]
-                                       options:@{}
-                             completionHandler:nil];
+    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:kTGHandleURL] options:@{} completionHandler:nil];
 }
 
 - (void)closeTapped {
@@ -416,7 +448,7 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
 
 #pragma mark - Кнопка и окно
 
-static UIWindow *gWindow = nil;
+static XantaWindow *gWindow = nil;
 static XantaMenu *gMenu = nil;
 static UIButton *gButton = nil;
 
@@ -489,11 +521,9 @@ void xantaShowButton(void) {
 
 __attribute__((constructor))
 static void xantaInit(void) {
-    os_log(OS_LOG_DEFAULT, "[xantapers] libcheat v2 loaded into process");
-    // Просто показываем кнопку через 3 секунды, БЕЗ вызова хуков
+    os_log(OS_LOG_DEFAULT, "[xantapers] libcheat v3 loaded into process");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        os_log(OS_LOG_DEFAULT, "[xantapers] showing button");
         xantaShowButton();
     });
 }
