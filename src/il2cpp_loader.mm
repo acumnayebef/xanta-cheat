@@ -10,7 +10,6 @@ Il2CppMethodInfo* (*il2cpp_class_get_method_from_name)(Il2CppClass*, const char*
 void* (*il2cpp_method_get_pointer)(const Il2CppMethodInfo*) = NULL;
 void* (*il2cpp_thread_attach)(Il2CppDomain) = NULL;
 
-// ИСПРАВЛЕНИЕ: добавили il2cpp_##name в макрос, чтобы он искал правильные переменные
 #define RESOLVE(name) do { \
     *(void **)(&il2cpp_##name) = dlsym(RTLD_DEFAULT, "il2cpp_" #name); \
     if (!il2cpp_##name) { os_log(OS_LOG_DEFAULT, "[xantapers] missing: il2cpp_%s", #name); return false; } \
@@ -19,7 +18,10 @@ void* (*il2cpp_thread_attach)(Il2CppDomain) = NULL;
 bool il2cpp_loader_init(void) {
     void *h = dlopen("UnityFramework", RTLD_NOW | RTLD_GLOBAL);
     if (!h) h = dlopen("@executable_path/Frameworks/UnityFramework.framework/UnityFramework", RTLD_NOW | RTLD_GLOBAL);
-    if (!h) return false;
+    if (!h) {
+        os_log(OS_LOG_DEFAULT, "[xantapers] Failed to dlopen UnityFramework");
+        return false;
+    }
 
     RESOLVE(domain_get);
     RESOLVE(domain_assembly_open);
@@ -37,9 +39,13 @@ Il2CppClass* il2cpp_find_class(const char *ns, const char *name) {
     static Il2CppImage *img = NULL;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        Il2CppDomain d = il2cpp_domain_get(); // ИСПРАВЛЕНИЕ: убрали *
+        Il2CppDomain d = il2cpp_domain_get();
+        // КРИТИЧЕСКИ ВАЖНО: Привязываем наш поток к Unity, иначе будет краш
+        il2cpp_thread_attach(d);
+        
         Il2CppAssembly *a = il2cpp_domain_assembly_open(d, "Assembly-CSharp");
         if (a) img = il2cpp_assembly_get_image(a);
+        else os_log(OS_LOG_DEFAULT, "[xantapers] Failed to open Assembly-CSharp");
     });
     return img ? il2cpp_class_from_name(img, ns, name) : NULL;
 }
