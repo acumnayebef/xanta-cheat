@@ -22,18 +22,12 @@ jobs:
       - name: Build Dobby for iOS arm64
         run: |
           cd third_party/dobby
-          mkdir -p build-ios && cd build-ios
-          cmake .. \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_ARCHITECTURES=arm64
-            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
-            -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DDOBBY_GENERATE_SHARED=OFF
-          cmake --build . -j$(sysctl -n hw.ncpu)
+          # Используем официальный скрипт сборки Dobby для iOS
+          python3 scripts/platform_builder.py --platform=iphoneos --arch=arm64
+          
           echo "=== Built artifacts ==="
-          find . -name "*.a" -exec lipo -info {} \;
+          # Ищем собранную статическую библиотеку для arm64
+          find . -name "libdobby.a" -exec lipo -info {} \;
 
       - name: Build libcheat.dylib
         run: bash scripts/build.sh
