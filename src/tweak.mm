@@ -23,6 +23,20 @@ static UIColor *C_ACCENT2(void) { return [UIColor colorWithRed:0.75 green:0.45 b
 static UIColor *C_TEXT(void)    { return [UIColor colorWithWhite:0.95 alpha:1.0]; }
 static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]; }
 
+#pragma mark - Окно-оверлей (пропускает касания в игру)
+
+@interface XantaWindow : UIWindow
+@end
+
+@implementation XantaWindow
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *v = [super hitTest:point withEvent:event];
+    // Пустое место окна/корневой view не ловим — касание уходит окну ниже (игре)
+    if (v == self || v == self.rootViewController.view) return nil;
+    return v;
+}
+@end
+
 #pragma mark - Звёздное поле
 
 @interface StarfieldView : UIView
@@ -129,6 +143,12 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
         [self buildUI];
     }
     return self;
+}
+
+// Тап мимо панели проходит в игру, пока меню открыто
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *v = [super hitTest:point withEvent:event];
+    return v == self ? nil : v;
 }
 
 - (void)buildUI {
@@ -404,7 +424,7 @@ void xantaShowButton(void);
 
 static void xantaEnsureWindow(void) {
     if (gWindow) return;
-    gWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    gWindow = [[XantaWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     gWindow.windowLevel = UIWindowLevelAlert + 1000;
     gWindow.backgroundColor = [UIColor clearColor];
     gWindow.rootViewController = [UIViewController new];
