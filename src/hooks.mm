@@ -20,7 +20,7 @@ static void hook_SetBalance(void *self, int newBalance) {
 static void (*orig_SetEngine)(void *self, int level) = NULL;
 static void hook_SetEngine(void *self, int level) {
     if (g_BoolFreeUpgrades) {
-        level = 5; // Максимальный уровень
+        level = 5;
     }
     if (orig_SetEngine) orig_SetEngine(self, level);
 }
