@@ -119,11 +119,13 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     UIButton *_tabCreators;
     UILabel *_tabIndicator;
     BOOL _creatorsTab;
+    BOOL _hooksInstalled; // Флаг, чтобы не ставить хуки дважды
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
         self.backgroundColor = [UIColor clearColor];
+        _hooksInstalled = NO;
         [self buildUI];
     }
     return self;
@@ -210,9 +212,16 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     v.hidden = YES;
     
     CGFloat w = v.bounds.size.width;
-    __block CGFloat yOffset = 20;
+    __block CGFloat yOffset = 10;
 
-    // Функция для создания переключателя
+    // 1. Кнопка активации хуков (вместо тумблера)
+    GradientButton *initBtn = [[GradientButton alloc] initWithFrame:CGRectMake(0, yOffset, w, 44)];
+    [initBtn setTitle:@"АКТИВИРОВАТЬ ХУКИ" forState:UIControlStateNormal];
+    [initBtn addTarget:self action:@selector(installHooksTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [v addSubview:initBtn];
+    yOffset += 54;
+
+    // 2. Функция для создания переключателя
     UISwitch* (^addToggle)(NSString *, BOOL, SEL) = ^UISwitch*(NSString *title, BOOL isOn, SEL action) {
         UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, yOffset, w, 44)];
         row.backgroundColor = C_PANEL();
@@ -235,7 +244,7 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
         return sw;
     };
 
-    // Добавляем тумблеры
+    // 3. Тумблеры читов
     addToggle(@"Бесконечные деньги", g_BoolInfMoney, @selector(toggleInfMoney:));
     addToggle(@"Бесплатные апгрейды", g_BoolFreeUpgrades, @selector(toggleFreeUpgrades:));
     addToggle(@"Бесплатные покупки (IAP)", g_BoolFreeIAP, @selector(toggleFreeIAP:));
@@ -347,9 +356,23 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     }
 }
 
+// Действия тумблеров
 - (void)toggleInfMoney:(UISwitch *)sender { g_BoolInfMoney = sender.isOn; }
 - (void)toggleFreeUpgrades:(UISwitch *)sender { g_BoolFreeUpgrades = sender.isOn; }
 - (void)toggleFreeIAP:(UISwitch *)sender { g_BoolFreeIAP = sender.isOn; }
+
+// Действие кнопки установки хуков
+- (void)installHooksTapped:(GradientButton *)sender {
+    if (_hooksInstalled) return; // Защита от повторного нажатия
+    
+    os_log(OS_LOG_DEFAULT, "[xantapers] User manually triggered hooks installation");
+    install_hooks();
+    _hooksInstalled = YES;
+    
+    [sender setTitle:@"ХУКИ АКТИВИРОВАНЫ ✓" forState:UIControlStateNormal];
+    sender.userInteractionEnabled = NO;
+    sender.alpha = 0.6;
+}
 
 - (void)openChannel {
     [[UIApplication sharedApplication] openURL:[NSURL URLWithString:kTGChannelURL]
@@ -447,11 +470,9 @@ void xantaShowButton(void) {
 __attribute__((constructor))
 static void xantaInit(void) {
     os_log(OS_LOG_DEFAULT, "[xantapers] libcheat loaded into process");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+    // Просто показываем кнопку через 3 секунды, БЕЗ вызова хуков
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        // Инициализируем хуки ДО показа меню
-        install_hooks();
-        
         os_log(OS_LOG_DEFAULT, "[xantapers] showing button");
         xantaShowButton();
     });
