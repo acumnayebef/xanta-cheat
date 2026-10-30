@@ -469,7 +469,7 @@ void xantaShowButton(void) {
 
 __attribute__((constructor))
 static void xantaInit(void) {
-    os_log(OS_LOG_DEFAULT, "[xantapers] libcheat loaded into process");
+    os_log(OS_LOG_DEFAULT, "[xantapers] libcheat v2 loaded into process");
     // Просто показываем кнопку через 3 секунды, БЕЗ вызова хуков
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{

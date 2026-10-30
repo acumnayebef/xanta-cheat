@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    timeout-minutes: 20 # Если за 20 минут не соберется - отменится сама
     steps:
       - name: Checkout
         uses: actions/checkout@v4
