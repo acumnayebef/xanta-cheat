@@ -7,10 +7,8 @@ Il2CppAssembly* (*il2cpp_domain_assembly_open)(Il2CppDomain, const char*) = NULL
 Il2CppImage* (*il2cpp_assembly_get_image)(Il2CppAssembly*) = NULL;
 Il2CppClass* (*il2cpp_class_from_name)(const Il2CppImage*, const char*, const char*) = NULL;
 Il2CppMethodInfo* (*il2cpp_class_get_method_from_name)(Il2CppClass*, const char*, int) = NULL;
-void* (*il2cpp_method_get_pointer)(const Il2CppMethodInfo*) = NULL;
 void* (*il2cpp_thread_attach)(Il2CppDomain) = NULL;
 
-// Убрали RTLD_DEFAULT! Ищем строго в хэндле UnityFramework
 #define RESOLVE(name) do { \
     *(void **)(&il2cpp_##name) = dlsym(h, "il2cpp_" #name); \
     if (!il2cpp_##name) { \
@@ -20,12 +18,10 @@ void* (*il2cpp_thread_attach)(Il2CppDomain) = NULL;
 } while (0)
 
 bool il2cpp_loader_init(void) {
-    // Пробуем разные варианты загрузки хэндла
     void *h = dlopen("@executable_path/Frameworks/UnityFramework.framework/UnityFramework", RTLD_LAZY);
-    if (!h) h = dlopen("@executable_path/Frameworks/UnityFramework.framework/UnityFramework", RTLD_LAZY | RTLD_NOLOAD);
     if (!h) h = dlopen("UnityFramework", RTLD_LAZY);
-    if (!h) h = dlopen("UnityFramework", RTLD_LAZY | RTLD_NOLOAD);
-    
+    if (!h) h = dlopen("UnityFramework", RTLD_NOW | RTLD_NOLOAD);
+
     if (!h) {
         add_log(@"ОШИБКА: Не удалось получить хэндл UnityFramework");
         return false;
@@ -36,8 +32,8 @@ bool il2cpp_loader_init(void) {
     RESOLVE(assembly_get_image);
     RESOLVE(class_from_name);
     RESOLVE(class_get_method_from_name);
-    RESOLVE(method_get_pointer);
     RESOLVE(thread_attach);
+    // Убрали method_get_pointer, так как его нет в этой игре
 
     add_log(@"Символы il2cpp успешно найдены");
     return true;
@@ -67,5 +63,7 @@ Il2CppClass* il2cpp_find_class(const char *ns, const char *name) {
 void* il2cpp_method_addr(Il2CppClass *klass, const char *name, int argc) {
     if (!klass) return NULL;
     Il2CppMethodInfo *m = il2cpp_class_get_method_from_name(klass, name, argc);
-    return m ? il2cpp_method_get_pointer(m) : NULL;
+    if (!m) return NULL;
+    // В IL2CPP первый указатель в MethodInfo - это адрес кода функции
+    return *(void**)m;
 }

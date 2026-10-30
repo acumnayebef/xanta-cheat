@@ -20,14 +20,12 @@ void add_log(NSString *format, ...) {
         if (!g_LogText) g_LogText = [NSMutableString new];
         [g_LogText appendFormat:@"\n> %@", str];
         
-        // Ограничиваем размер логов, чтобы не лагало
         if (g_LogText.length > 5000) {
             [g_LogText deleteCharactersInRange:NSMakeRange(0, g_LogText.length - 5000)];
         }
 
         if (g_LogView) {
             g_LogView.text = g_LogText;
-            // Скроллим в самый низ
             NSRange range = NSMakeRange(g_LogView.text.length - 1, 1);
             [g_LogView scrollRangeToVisible:range];
         }
@@ -178,8 +176,16 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     return v == self ? nil : v;
 }
 
+// Метод для перетаскивания панели
+- (void)handlePan:(UIPanGestureRecognizer *)gesture {
+    CGPoint translation = [gesture translationInView:self];
+    gesture.view.center = CGPointMake(gesture.view.center.x + translation.x,
+                                      gesture.view.center.y + translation.y);
+    [gesture setTranslation:CGPointZero inView:self];
+}
+
 - (void)buildUI {
-    _panel = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 480)]; // Чуть увеличили высоту
+    _panel = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 480)];
     _panel.center = self.center;
     _panel.backgroundColor = C_BG();
     _panel.layer.cornerRadius = 22;
@@ -190,6 +196,11 @@ static UIColor *C_SUB(void)     { return [UIColor colorWithWhite:0.60 alpha:1.0]
     _panel.layer.shadowRadius = 18;
     _panel.layer.shadowOffset = CGSizeZero;
     _panel.clipsToBounds = NO;
+    
+    // Добавляем распознаватель перетаскивания
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    [_panel addGestureRecognizer:pan];
+    
     [self addSubview:_panel];
 
     StarfieldView *stars = [[StarfieldView alloc] initWithFrame:_panel.bounds];
